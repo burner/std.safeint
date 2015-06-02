@@ -159,12 +159,16 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 		return this.value == nan;
 	}
 
-	SafeInt!T opBinary(string op,V)(V vIn) const @nogc nothrow {
+	private static auto getValue(V)(V vIn) @nogc nothrow {
 		static if(is(V : SafeInt!S, S)) {
-			auto v = vIn.value;
+			return vIn.value;
 		} else {
-			auto v = vIn;
+			return vIn;
 		}
+	}
+
+	SafeInt!T opBinary(string op,V)(V vIn) const @nogc nothrow {
+		auto v = getValue(vIn);
 
 		bool overflow = false;
 
@@ -269,6 +273,18 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 		return typeof(this)(ret);
 	}
 
+	bool opEquals(V)(auto ref V vIn) const @nogc nothrow {
+		auto v = getValue(vIn);
+
+		return equal(this.value, v);
+	}
+
+	int opCmp(V)(auto ref V vIn) const @nogc nothrow {
+		auto v = getValue(vIn);
+
+		return less(this.value, v) ? -1 :
+			equal(this.value, v) ? 0 : 1;
+	}
 }
 
 @safe pure nothrow @nogc:
@@ -278,6 +294,10 @@ unittest {
 	auto s2 = s1 + 1;
 	assert(!s2.isNaN);
 	assert(s2 == 2);
+	assert(s2 == 2);
+	assert(s2 == SafeInt!byte(2));
+	assert(s2 < SafeInt!byte(3));
+	assert(s2 > SafeInt!byte(1));
 
 	auto s3 = SafeInt!int(2);
 	auto s4 = s1 + s3;
@@ -323,6 +343,26 @@ unittest {
 		assert(sm == 0);
 		assert(sx == 1);
 		assert(sd == 1);
+	}
+}
+
+unittest {
+	foreach(T; TypeTuple!(byte,short,int,long,ubyte,ushort,uint,ulong)) {
+		foreach(S; TypeTuple!(byte,short,int,long,ubyte,ushort,uint,ulong)) {
+			auto s0 = SafeInt!T(0);
+			auto s1 = SafeInt!T(1);
+			auto s2 = SafeInt!S(1);
+			auto s3 = SafeInt!S(2);
+
+			assert(s1 == 1);
+			assert(s1 == s2);
+			assert(s1 < s3);
+			assert(s1 < 2);
+			assert(s1 < s3);
+			assert(s1 < 2);
+			assert(s1 > 0);
+			assert(s1 > s0);
+		}
 	}
 }
 
