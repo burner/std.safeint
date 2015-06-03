@@ -1,6 +1,6 @@
 module std.safeint;
 
-import std.traits : isIntegral, isUnsigned, isSigned;
+import std.traits : isFloatingPoint, isIntegral, isUnsigned, isSigned, Unqual;
 import std.typetuple : TypeTuple;
 
 @safe pure:
@@ -109,8 +109,17 @@ unittest {
 	}
 }
 
-bool canConvertTo(T,S)(in S s) nothrow @nogc if(isIntegral!T && isIntegral!S) {
-	return (less(s, T.min) || greater(s, T.max)) ? false : true;
+private auto getValue(T)(T t) {
+	static if(isIntegral!T)
+		return t;
+	else
+		return t.value;
+}
+
+bool canConvertTo(T,S)(in S s) nothrow @nogc if(isIntegral!(Unqual!T) 
+		&& isIntegral!(SafeIntType!S)) {
+	return (less(getValue(s), T.min) || greater(getValue(s), T.max)) 
+		? false : true;
 }
 
 unittest {
@@ -122,6 +131,18 @@ unittest {
 	assert(!canConvertTo!ubyte(1337));
 	assert(!canConvertTo!byte(-1337));
 	assert(!canConvertTo!ubyte(-1337));
+}
+
+template SafeIntType(T) {
+	static if(isIntegral!T)
+		alias SafeIntType = T;
+	else
+		alias SafeIntType = typeof(T.value);
+}
+
+unittest {
+	static assert(is(SafeIntType!int == int));
+	static assert(is(SafeIntType!(SafeInt!int) == int));
 }
 
 nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
@@ -213,7 +234,7 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 					@safe @nogc pure nothrow uOp = &mulu;
 			}
 		} else static if(op == "/") {
-			auto sOp = function(T v1, T v2 , ref bool overflow) 
+			auto sOp = function(long v1, long v2 , ref bool overflow) 
 					@safe pure nothrow @nogc
 			{
 				T ret = this.nan;
@@ -224,16 +245,25 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 				}
 			};
 
-			auto uOp = function(T v1, T v2, ref bool overflow) 
+			auto uOp = function(ulong v1, ulong v2, ref bool overflow) 
 					@safe pure nothrow @nogc 
 			{
 				T ret = this.nan;
-				if(notEqual(v1, 0)) {
+				if(notEqual(v2, 0)) {
 					return cast(T)v1 / v2;
 				} else {
 					return SafeInt!T().nan;
 				}
 			};
+		} else static if(op == "%") {
+			auto sOp = function(T v1, T v2 , ref bool overflow) 
+					@safe pure nothrow @nogc
+			{
+				T ret = this.nan;
+				return v1 % v2;
+			};
+
+			auto uOp = sOp;
 		}
 
 		static if(Signed && isSigned!(typeof(v))) { 
@@ -246,8 +276,8 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 			T ret = this.nan;
 			if(canConvertTo!T(v)) {
 				ret = cast(T)sOp(this.value, cast(T)v, overflow);
-			} else if(canConvertTo!V(this.value)) {
-				auto tmp = cast(T)uOp(cast(typeof(v))this.value, v, overflow);
+			} else if(canConvertTo!(typeof(v))(this.value)) {
+				auto tmp = cast(V)uOp(cast(typeof(v))this.value, v, overflow);
 				if(canConvertTo!T(tmp)) {
 					ret = cast(T)tmp;
 				}
@@ -258,9 +288,9 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 			T ret = this.nan;
 			if(canConvertTo!T(v)) {
 				ret = cast(T)uOp(this.value, cast(T)v, overflow);
-			} else if(canConvertTo!V(this.value)) {
-				auto tmp = cast(T)sOp(cast(typeof(v))this.value, v, overflow);
-				if(canConvertTo!T(tmp)) {
+			} else if(canConvertTo!(typeof(v))(this.value)) {
+				auto tmp = cast(V)sOp(cast(typeof(v))this.value, v, overflow);
+				if(canConvertTo!(SafeIntType!T)(tmp)) {
 					ret = cast(T)tmp;
 				}
 			}
@@ -274,16 +304,24 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 	}
 
 	bool opEquals(V)(auto ref V vIn) const @nogc nothrow {
-		auto v = getValue(vIn);
+		static if(isFloatingPoint!V) {
+			return this.value == vIn;
+		} else {
+			auto v = getValue(vIn);
 
-		return equal(this.value, v);
+			return equal(this.value, v);
+		}
 	}
 
 	int opCmp(V)(auto ref V vIn) const @nogc nothrow {
-		auto v = getValue(vIn);
+		static if(isFloatingPoint!V) {
+			return this.value < vIn ? -1 : this.value > vIn ? 1 : 0;
+		} else {
+			auto v = getValue(vIn);
 
-		return less(this.value, v) ? -1 :
-			equal(this.value, v) ? 0 : 1;
+			return less(this.value, v) ? -1 :
+				equal(this.value, v) ? 0 : 1;
+		}
 	}
 }
 
@@ -298,12 +336,15 @@ unittest {
 	assert(s2 == SafeInt!byte(2));
 	assert(s2 < SafeInt!byte(3));
 	assert(s2 > SafeInt!byte(1));
+	assert(s2 > 1.0);
 
 	auto s3 = SafeInt!int(2);
 	auto s4 = s1 + s3;
 	static assert(is(typeof(s4) == SafeInt!int));
 	assert(!s4.isNaN);
 	assert(s4 == 3);
+
+	assert(SafeInt!int(0) == 0.0);
 }
 
 unittest {
@@ -328,21 +369,32 @@ unittest {
 	foreach(T; TypeTuple!(byte,short,int,long,ubyte,ushort,uint,ulong)) {
 		auto s1 = SafeInt!T(1);
 		auto s2 = SafeInt!T(1);
+		auto s3 = SafeInt!T(5);
+		auto s4 = SafeInt!T(2);
 
 		auto sp = s1 + s2;
 		auto sm = s1 - s2;
 		auto sx = s1 * s2;
 		auto sd = s1 / s2;
+		auto sdn = s1 / 0;
+		auto sdn2 = s1 / SafeInt!int(0);
+		auto smo = s3 % s4;
 
 		static assert(is(typeof(sp) == SafeInt!T));
 		static assert(is(typeof(sm) == SafeInt!T));
 		static assert(is(typeof(sx) == SafeInt!T));
-		assert(is(typeof(sd) == SafeInt!T));
+		static assert(is(typeof(sd) == SafeInt!T));
+		static assert(is(typeof(smo) == SafeInt!T));
+		static assert(is(typeof(sdn) == SafeInt!T));
+		static assert(is(typeof(sdn2) == SafeInt!T));
 
 		assert(sp == 2);
 		assert(sm == 0);
 		assert(sx == 1);
 		assert(sd == 1);
+		assert(smo == 1);
+		assert(sdn == sdn.nan);
+		assert(sdn2 == sdn.nan);
 	}
 }
 
