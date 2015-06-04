@@ -203,6 +203,15 @@ private auto getValue(T)(T t) {
 		return t.value;
 }
 
+/* This functions checks if the value of $(D s) can be stored by a variable of
+type $(D T).
+
+Params:
+	s = the value to check
+
+Returns:
+	$(D true) if the value can be stored, false otherwise.
+*/
 bool canConvertTo(T,S)(in S s) nothrow @nogc if(isIntegral!(Unqual!T) 
 		&& isIntegral!(SafeIntType!S)) {
 	return (less(getValue(s), T.min) || greater(getValue(s), T.max)) 
@@ -393,6 +402,18 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 			auto uOp = sOp;
 		}
 
+		/*auto executer(A,B,T)(A a, B b, ref bool overflow) {
+			A ret = T.nan;
+			if(canConvertTo!A(v)) {
+				ret = sOp(this.value, cast(A)v, overflow);
+			} else if(canConvertTo!B(a)) {
+				auto tmp = uOp(cast(B)this.value, v, overflow);
+				if(canConvertTo!A(tmp)) {
+					ret = cast(A)tmp;
+				}
+			}
+		}*/
+
 		static if(Signed && isSigned!(typeof(v))) { 
 			auto ret = sOp(this.value, v, overflow
 			);
@@ -403,9 +424,9 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 
 		static if(Signed && isUnsigned!(typeof(v))) {
 			T ret = this.nan;
-			if(canConvertTo!T(v)) {
+			if(canConvertTo!SignedType(v)) {
 				ret = cast(T)sOp(this.value, cast(T)v, overflow);
-			} else if(canConvertTo!(typeof(v))(this.value)) {
+			} else if(canConvertTo!UnsignedType(this.value)) {
 				auto tmp = cast(V)uOp(cast(typeof(v))this.value, v, overflow);
 				if(canConvertTo!T(tmp)) {
 					ret = cast(T)tmp;
@@ -415,9 +436,9 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 
 		static if(!Signed && isSigned!(typeof(v))) {
 			T ret = this.nan;
-			if(canConvertTo!T(v)) {
+			if(canConvertTo!UnsignedType(v)) {
 				ret = cast(T)uOp(this.value, cast(T)v, overflow);
-			} else if(canConvertTo!(typeof(v))(this.value)) {
+			} else if(canConvertTo!SignedType(this.value)) {
 				auto tmp = cast(V)sOp(cast(typeof(v))this.value, v, overflow);
 				if(canConvertTo!(SafeIntType!T)(tmp)) {
 					ret = cast(T)tmp;
@@ -431,7 +452,7 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 
 		return typeof(this)(ret);
 	}
-
+	
 	SafeInt!T opAssign(V)(V vIn) 
 			if(isNumeric!T && is(V : SafeInt!S, S)) 
 	{
