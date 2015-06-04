@@ -1,3 +1,11 @@
+/** This $(D module) holds functions to safely compare integers of different
+sizes and signeness without any unwanted implicit casts.
+
+Additionally, this $(D module) implements a $(D SafeInt!T) type.
+This type has an explicit $(D nan) value, checks binary operation for over-
+and underflows, checks division by zero, and checks if values to assign can be
+represented by $(D T) where $(D T) is any integer type.
+*/
 module std.safeint;
 
 import std.traits : isFloatingPoint, isIntegral, isUnsigned, isNumeric, 
