@@ -491,30 +491,29 @@ unittest {
 unittest {
 	import std.conv : to;
 	foreach(T; TTest) {
-		foreach(S; TTest) {
-			SafeInt!T minT = SafeInt!(T).min;
-			SafeInt!T maxT = SafeInt!(T).max;
-			SafeInt!T zeroT = 0;
+		SafeInt!T minT = SafeInt!(T).min;
+		SafeInt!T maxT = SafeInt!(T).max;
+		SafeInt!T zeroT = 0;
 
-			static if(isUnsigned!T) {
-				assert(minT == 0);
-				assert(maxT == T.max - 1);
-				assert(zeroT == 0);
+		static if(isUnsigned!T) {
+			assert(minT == 0);
+			assert(maxT == T.max - 1);
+			assert(zeroT == 0);
 
-				zeroT -= 1;
-				assert(zeroT.isNaN);
-			} else {
-				assert(minT == T.min + 1);
-				assert(maxT == T.max);
-				assert(zeroT == 0);
-			}
-
-			minT -= 1;
-			assert(minT.isNaN);
-
-			maxT += 1;
-			assert(maxT.isNaN);
+			zeroT -= 1;
+			assert(zeroT.isNaN);
+		} else {
+			assert(minT == T.min + 1);
+			assert(maxT == T.max);
+			assert(zeroT == 0);
 		}
+
+		minT -= 1;
+		assert(minT.isNaN);
+
+		maxT += 1;
+		assert(maxT.isNaN);
+
 	}
 }
 
