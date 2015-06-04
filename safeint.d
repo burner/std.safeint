@@ -238,6 +238,11 @@ unittest {
 	}
 }
 
+/** This template returns the integer type used by a $(D SafeInt) to store the
+value.
+
+If an integer type is passed this type will be returned.
+*/
 template SafeIntType(T) {
 	static if(isIntegral!T)
 		alias SafeIntType = T;
@@ -245,6 +250,18 @@ template SafeIntType(T) {
 		alias SafeIntType = typeof(T.value);
 }
 
+///
+unittest {
+	static assert(is(SafeIntType!(SafeInt!int) == int));
+	static assert(is(SafeIntType!int == int));
+}
+
+/** This template checks if the passed type is a $(D SafeInt).
+
+Returns:
+	$(D true) if the passed type $(D T) is an $(D SafeInt), false
+	overwise.
+*/
 template isSafeInt(T) {
 	static if(is(T : SafeInt!S, S))
 		enum isSafeInt = true;
