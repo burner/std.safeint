@@ -1,6 +1,7 @@
 module std.safeint;
 
-import std.traits : isFloatingPoint, isIntegral, isUnsigned, isSigned, Unqual;
+import std.traits : isFloatingPoint, isIntegral, isUnsigned, isNumeric, 
+	   isSigned, Unqual;
 import std.typetuple : TypeTuple;
 
 @safe pure:
@@ -67,6 +68,8 @@ private bool impl(string op, bool A, bool B, T,S)(in T t, in S s) @nogc nothrow
 	}
 }
 
+private alias TTest = TypeTuple!(byte,short,int,long,ubyte,ushort,uint,ulong);
+
 unittest {
 	import std.conv : to;
 	foreach(T; TypeTuple!(byte,short,int,long)) {
@@ -131,6 +134,12 @@ unittest {
 	assert(!canConvertTo!ubyte(1337));
 	assert(!canConvertTo!byte(-1337));
 	assert(!canConvertTo!ubyte(-1337));
+
+	foreach(T; TTest) {
+		foreach(S; TTest) {
+			assert(canConvertTo!T(SafeInt!S(0)));
+		}
+	}
 }
 
 template SafeIntType(T) {
@@ -138,6 +147,21 @@ template SafeIntType(T) {
 		alias SafeIntType = T;
 	else
 		alias SafeIntType = typeof(T.value);
+}
+
+template isSafeInt(T) {
+	static if(is(T : SafeInt!S, S))
+		enum isSafeInt = true;
+	else
+		enum isSafeInt = false;
+}
+
+unittest {
+	static assert(!isSafeInt!int);
+	foreach(T; TTest) {
+		alias ST = SafeInt!T;
+		static assert(isSafeInt!ST);
+	}
 }
 
 unittest {
@@ -154,22 +178,24 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 
 	alias value this;
 
-	this(V)(in V v) if(isIntegral!V) {
+	this(V)(in V v) if(isNumeric!V || is(V : SafeInt!S, S) ) {
 		this.safeAssign(v);
 	}
 
 	static if(isUnsigned!T) {
-		enum minValue = 0u;
-		enum maxValue = T.max - 1;
+		enum min = 0u;
+		enum max = T.max - 1;
 		enum nan = T.max;
 	} else {
-		enum minValue = T.min + 1;
-		enum maxValue = T.max;
+		enum min = T.min + 1;
+		enum max = T.max;
 		enum nan = T.min;
 	}
 
 	private void safeAssign(V)(in V v) {
-		if(greaterEqual(v, this.minValue) && lessEqual(v, this.maxValue)) {
+		if(greaterEqual(getValue(v), this.min) 
+				&& lessEqual(getValue(v), this.max)) 
+		{
 			this.value = cast(T)v;
 		} else {
 			this.value = this.nan;
@@ -180,7 +206,7 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 		return this.value == nan;
 	}
 
-	private static auto getValue(V)(V vIn) @nogc nothrow {
+	private static auto getValue(V)(V vIn) {
 		static if(is(V : SafeInt!S, S)) {
 			return vIn.value;
 		} else {
@@ -188,8 +214,22 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 		}
 	}
 
-	SafeInt!T opBinary(string op,V)(V vIn) const @nogc nothrow {
+	SafeInt!T opOpAssign(string op,V)(V vIn) {
+		enum call = "this = this " ~ op ~ " vIn;";
+		mixin(call);
+		return this;
+	}
+
+	SafeInt!T opBinary(string op,V)(V vIn) const {
 		auto v = getValue(vIn);
+
+		static if(typeof(v).sizeof > 4 || typeof(this.value).sizeof > 4) {
+			alias SignedType = long;
+			alias UnsignedType = ulong;
+		} else {
+			alias SignedType = int;
+			alias UnsignedType = uint;
+		}
 
 		bool overflow = false;
 
@@ -198,7 +238,7 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 		}
 
 		static if(op == "+") {
-			static if(T.sizeof > 4) {
+			static if(T.sizeof > 4 || typeof(v).sizeof > 4) {
 				long function(long,long,ref bool) 
 					@safe @nogc pure nothrow sOp = &adds;
 				ulong function(ulong,ulong,ref bool) 
@@ -210,7 +250,7 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 					@safe @nogc pure nothrow uOp = &addu;
 			}
 		} else static if(op == "-") {
-			static if(T.sizeof > 4) {
+			static if(T.sizeof > 4 || typeof(v).sizeof > 4) {
 				long function(long,long,ref bool) 
 					@safe @nogc pure nothrow sOp = &subs;
 				ulong function(ulong,ulong,ref bool) 
@@ -222,7 +262,7 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 					@safe @nogc pure nothrow uOp = &subu;
 			}
 		} else static if(op == "*") {
-			static if(T.sizeof > 4) {
+			static if(T.sizeof > 4 || typeof(v).sizeof > 4) {
 				long function(long,long,ref bool) 
 					@safe @nogc pure nothrow sOp = &muls;
 				ulong function(ulong,ulong,ref bool) 
@@ -267,9 +307,11 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 		}
 
 		static if(Signed && isSigned!(typeof(v))) { 
-			auto ret = sOp(this.value, v, overflow);
+			auto ret = sOp(this.value, v, overflow
+			);
 		} else static if(!Signed && isUnsigned!(typeof(v))) {
-			auto ret = uOp(this.value, v, overflow);
+			auto ret = uOp(this.value, v, overflow
+			);
 		}
 
 		static if(Signed && isUnsigned!(typeof(v))) {
@@ -303,7 +345,14 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 		return typeof(this)(ret);
 	}
 
-	bool opEquals(V)(auto ref V vIn) const @nogc nothrow {
+	SafeInt!T opAssign(V)(V vIn) 
+			if(isNumeric!T && is(V : SafeInt!S, S)) 
+	{
+		this.safeAssign(getValue(vIn));
+		return this;
+	}
+
+	bool opEquals(V)(auto ref V vIn) const {
 		static if(isFloatingPoint!V) {
 			return this.value == vIn;
 		} else {
@@ -313,7 +362,7 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 		}
 	}
 
-	int opCmp(V)(auto ref V vIn) const @nogc nothrow {
+	int opCmp(V)(auto ref V vIn) const {
 		static if(isFloatingPoint!V) {
 			return this.value < vIn ? -1 : this.value > vIn ? 1 : 0;
 		} else {
@@ -325,11 +374,19 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 	}
 }
 
-@safe pure nothrow @nogc:
+@safe pure nothrow:
+//@nogc
 
 unittest {
+	SafeInt!uint s0 = -1;
+	assert(s0.isNaN);
+
+	SafeInt!int s0_1 = s0  + 4;
+	assert(s0_1.isNaN);
 	auto s1 = SafeInt!int(1);
 	auto s2 = s1 + 1;
+
+	SafeInt!int s2_1 = s0 = s2;
 	assert(!s2.isNaN);
 	assert(s2 == 2);
 	assert(s2 == 2);
@@ -337,6 +394,9 @@ unittest {
 	assert(s2 < SafeInt!byte(3));
 	assert(s2 > SafeInt!byte(1));
 	assert(s2 > 1.0);
+
+	s2 += 1;
+	assert(s2 == 3);
 
 	auto s3 = SafeInt!int(2);
 	auto s4 = s1 + s3;
@@ -348,7 +408,7 @@ unittest {
 }
 
 unittest {
-	foreach(T; TypeTuple!(byte,short,int,long,ubyte,ushort,uint,ulong)) {
+	foreach(T; TTest) {
 		auto s1 = SafeInt!T(127);
 		assert(s1 == 127);
 		assert(!s1.isNaN);
@@ -363,10 +423,13 @@ unittest {
 	auto s1 = SafeInt!ubyte(1);
 
 	auto r = s1 + SafeInt!ubyte(2);
+	assert(r == 3);
+	auto r1 = s1 + 2;
+	assert(r1 == 3);
 }
 
 unittest {
-	foreach(T; TypeTuple!(byte,short,int,long,ubyte,ushort,uint,ulong)) {
+	foreach(T; TTest) {
 		auto s1 = SafeInt!T(1);
 		auto s2 = SafeInt!T(1);
 		auto s3 = SafeInt!T(5);
@@ -399,8 +462,8 @@ unittest {
 }
 
 unittest {
-	foreach(T; TypeTuple!(byte,short,int,long,ubyte,ushort,uint,ulong)) {
-		foreach(S; TypeTuple!(byte,short,int,long,ubyte,ushort,uint,ulong)) {
+	foreach(T; TTest) {
+		foreach(S; TTest) {
 			auto s0 = SafeInt!T(0);
 			auto s1 = SafeInt!T(1);
 			auto s2 = SafeInt!S(1);
@@ -423,4 +486,43 @@ unittest {
 	auto s2 = SafeInt!int(1);
 
 	auto sd = s1 / s2;
+}
+
+unittest {
+	import std.conv : to;
+	foreach(T; TTest) {
+		foreach(S; TTest) {
+			SafeInt!T minT = SafeInt!(T).min;
+			SafeInt!T maxT = SafeInt!(T).max;
+			SafeInt!T zeroT = 0;
+
+			static if(isUnsigned!T) {
+				assert(minT == 0);
+				assert(maxT == T.max - 1);
+				assert(zeroT == 0);
+
+				zeroT -= 1;
+				assert(zeroT.isNaN);
+			} else {
+				assert(minT == T.min + 1);
+				assert(maxT == T.max);
+				assert(zeroT == 0);
+			}
+
+			minT -= 1;
+			assert(minT.isNaN);
+
+			maxT += 1;
+			assert(maxT.isNaN);
+		}
+	}
+}
+
+unittest {
+	foreach(T; TTest) {
+		foreach(S; TypeTuple!(byte,short,int,long)) {
+			auto s0 = SafeInt!T(2);
+			auto s1 = s0 + cast(S)-1;
+		}
+	}
 }
