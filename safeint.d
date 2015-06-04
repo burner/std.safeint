@@ -14,34 +14,110 @@ import std.typetuple : TypeTuple;
 
 @safe pure:
 
+/** This function compares two integer of arbitrary type for equality.
+
+This function makes sure no implicit value propagation falsifies the result of
+the comparison.
+
+Params:
+	t = an integer value
+	s = an integer value
+
+Returns: $(D true) if the value of $(D t) is equal to the value of $(D s),
+	false otherwise.
+*/
 bool equal(T,S)(in T t, in S s) @nogc nothrow if(isIntegral!T && isIntegral!S) {
 	return impl!("a == b",false,false)(t,s);
 }
 
+/** This function compares two integer of arbitrary type for no-equality.
+
+This function makes sure no implicit value propagation falsifies the result of
+the comparison.
+
+Params:
+	t = an integer value
+	s = an integer value
+
+Returns: $(D true) if the value of $(D t) is not equal to the value of $(D s),
+	false otherwise.
+*/
 bool notEqual(T,S)(in T t, in S s) @nogc nothrow 
 		if(isIntegral!T && isIntegral!S) 
 {
 	return impl!("a != b",true,true)(t,s);
 }
 
+/** This function checks if the value of the first parameter is smaller than 
+the value of the second parameter.
+
+This function makes sure no implicit value propagation falsifies the result of
+the comparison.
+
+Params:
+	t = an integer value
+	s = an integer value
+
+Returns: $(D true) if the value of $(D t) is smaller than the value of $(D s),
+	false otherwise.
+*/
 bool less(T,S)(in T t, in S s) @nogc nothrow 
 		if(isIntegral!T && isIntegral!S) 
 {
 	return impl!("a < b",true,false)(t,s);
 }
 
+/** This function checks if the value of the first parameter is less or equal
+to the value of the second parameter.
+
+This function makes sure no implicit value propagation falsifies the result of
+the comparison.
+
+Params:
+	t = an integer value
+	s = an integer value
+
+Returns: $(D true) if the value of $(D t) is smaller or equal than the value
+	of $(D s), false otherwise.
+*/
 bool lessEqual(T,S)(in T t, in S s) @nogc nothrow 
 		if(isIntegral!T && isIntegral!S) 
 {
 	return impl!("a <= b",true,false)(t,s);
 }
 
+/** This function checks if the value of the first parameter is greater than 
+the value of the second parameter.
+
+This function makes sure no implicit value propagation falsifies the result of
+the comparison.
+
+Params:
+	t = an integer value
+	s = an integer value
+
+Returns: $(D true) if the value of $(D t) is greater than the value of $(D s),
+	false otherwise.
+*/
 bool greater(T,S)(in T t, in S s) @nogc nothrow 
 		if(isIntegral!T && isIntegral!S) 
 {
 	return impl!("a > b",false,true)(t,s);
 }
 
+/** This function checks if the value of the first parameter is greater or equal
+to the value of the second parameter.
+
+This function makes sure no implicit value propagation falsifies the result of
+the comparison.
+
+Params:
+	t = an integer value
+	s = an integer value
+
+Returns: $(D true) if the value of $(D t) is greater or equal than the value
+	of $(D s), false otherwise.
+*/
 bool greaterEqual(T,S)(in T t, in S s) @nogc nothrow 
 		if(isIntegral!T && isIntegral!S) 
 {
@@ -133,6 +209,7 @@ bool canConvertTo(T,S)(in S s) nothrow @nogc if(isIntegral!(Unqual!T)
 		? false : true;
 }
 
+///
 unittest {
 	assert( canConvertTo!int(1337));
 	assert( canConvertTo!uint(1337));
@@ -142,7 +219,9 @@ unittest {
 	assert(!canConvertTo!ubyte(1337));
 	assert(!canConvertTo!byte(-1337));
 	assert(!canConvertTo!ubyte(-1337));
+}
 
+unittest {
 	foreach(T; TTest) {
 		foreach(S; TTest) {
 			assert(canConvertTo!T(SafeInt!S(0)));
