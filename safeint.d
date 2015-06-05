@@ -269,6 +269,12 @@ template isSafeInt(T) {
 		enum isSafeInt = false;
 }
 
+///
+unittest {
+	static assert( isSafeInt!(SafeInt!int));
+	static assert(!isSafeInt!int);
+}
+
 unittest {
 	static assert(!isSafeInt!int);
 	foreach(T; TTest) {
@@ -277,11 +283,28 @@ unittest {
 	}
 }
 
-unittest {
-	static assert(is(SafeIntType!int == int));
-	static assert(is(SafeIntType!(SafeInt!int) == int));
-}
+/** $(B SafeInt) implements a safe integer type.
 
+Safe in the sense that:
+$(UL 
+	$(LI over and underflows are not ignored)
+	$(LI no unchecked implicit casts are performed)
+	$(LI assigned values are checked if they fit into the value range of the 
+		underlaying type)
+	$(LI default initialization to NaN)
+	$(LI no bitwise operations are implemented.)
+)
+
+Every SafeInt must be specialized with one integer type.
+The integer type also defines the NaN value.
+For unsigned integer $(D U) the NaN value is $(D U.max).
+For signed integer $(D S) the NaN value is $(D U.min).
+
+This limits the value ranges of $(D SafeInt!U) where $(D U) is an unsigned
+integer to $(D SafeInt!U >= 0 && SafeInt!U < U.max).
+This limits the value ranges of $(D SafeInt!S) where $(D S) is an signed
+integer to $(D SafeInt!S > S.min && SafeInt!S < S.max).
+*/
 nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 	import core.checkedint;
 
@@ -289,19 +312,37 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 
 	T value = nan;
 
+	/** Whenever a operation is not defined by the SafeInt struct this alias
+	converts the SafeInt to the underlaying integer.
+	*/
 	alias value this;
 
+	/** The constructor for SafeInt.
+	
+	The passed value must either be an basic numeric or another SafeInt value.
+	The value of the passed parameter must fit into the value range defined by
+	the template specialization of the SafeInt.
+
+	Params:
+		v = the value to construct the SafeInt from.
+	*/
 	this(V)(in V v) if(isNumeric!V || is(V : SafeInt!S, S) ) {
 		this.safeAssign(v);
 	}
 
 	static if(isUnsigned!T) {
+		/// The minimal value storable by this SafeInt.
 		enum min = 0u;
+		/// The maximal value storable by this SafeInt.
 		enum max = T.max - 1;
+		// The NaN value defined by this SafeInt.
 		enum nan = T.max;
 	} else {
+		/// The minimal value storable by this SafeInt.
 		enum min = T.min + 1;
+		/// The maximal value storable by this SafeInt.
 		enum max = T.max;
+		// The NaN value defined by this SafeInt.
 		enum nan = T.min;
 	}
 
@@ -315,6 +356,11 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 		}
 	}
 
+	/** Check if this SafeInts value is NaN.
+
+	Returns:
+		true is value is NaN, false otherwise.
+	*/
 	@property bool isNaN() const {
 		return this.value == nan;
 	}
@@ -327,12 +373,25 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 		}
 	}
 
+	/** This implements $(D +=, -=, %=, /=, *=) for this SafeInt.
+
+	Returns:
+		a copy of this SafeInt.	
+	*/
 	SafeInt!T opOpAssign(string op,V)(V vIn) {
 		enum call = "this = this " ~ op ~ " vIn;";
 		mixin(call);
 		return this;
 	}
 
+	/** This implements $(D +, -, %, /, *) for this SafeInt.
+
+	If the result of the operation can not be stored by the SafeInt!T,
+	the resulting value is nan.
+
+	Returns:
+		a new SafeInt!T with the result of the operation.
+	*/
 	SafeInt!T opBinary(string op,V)(V vIn) const {
 		auto v = getValue(vIn);
 
@@ -470,6 +529,18 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 		return typeof(this)(ret);
 	}
 	
+	/** Implements the assignment operation for the SafeInt type.
+
+	Every numeric value and every SafeInt can be assigned.
+	If the passed value can not be stored by the SafeInt, the value of the
+	SafeInt will be set to NaN.
+
+	Params:
+		vIn = the value to assign
+
+	Returns:
+		a copy of this SafeInt.	
+	*/
 	SafeInt!T opAssign(V)(V vIn) 
 			if(isNumeric!T && is(V : SafeInt!S, S)) 
 	{
@@ -477,6 +548,15 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 		return this;
 	}
 
+	/** Implements the equality comparison function for the SafeInt type.
+	
+	Params:
+		vIn = the value to compare the SafeInt with
+	
+	Returns:
+		$(D true) if the passed value is equal to the value stored in the
+		SafeInt, false otherwise.
+	*/
 	bool opEquals(V)(auto ref V vIn) const {
 		static if(isFloatingPoint!V) {
 			return this.value == vIn;
@@ -487,6 +567,15 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 		}
 	}
 
+	/** Implements the comparison function for the SafeInt type.
+	
+	Params:
+		vIn = the value to compare the SafeInt with
+	
+	Returns:
+		-1 if the SafeInt is less than $(D vIn), 1 if the SafeInt is greater
+		than $(D vIn), 0 otherwise.
+	*/
 	int opCmp(V)(auto ref V vIn) const {
 		static if(isFloatingPoint!V) {
 			return this.value < vIn ? -1 : this.value > vIn ? 1 : 0;
@@ -499,10 +588,8 @@ nothrow @nogc struct SafeInt(T) if(isIntegral!T) {
 	}
 }
 
-@safe pure nothrow:
-//@nogc
-
-unittest {
+///
+@safe @nogc pure nothrow unittest {
 	SafeInt!uint s0 = -1;
 	assert(s0.isNaN);
 
@@ -531,6 +618,8 @@ unittest {
 
 	assert(SafeInt!int(0) == 0.0);
 }
+
+@nogc @safe pure nothrow:
 
 unittest {
 	foreach(T; TTest) {
