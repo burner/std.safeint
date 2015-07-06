@@ -1,0 +1,7 @@
+{
+	"name": "SafeInt",
+	"description": "A integral type of D with dedicated NaN value",
+	"authors": ["Robert burner Schadek"],
+	"homepage": "https://github.com/burner/std.safeint",
+	"license": "BOOST",
+
