@@ -526,8 +526,6 @@ struct SafeIntInline(T)
 {
     T value = nan;
 
-    alias value this;
-
     static if (isUnsigned!T)
     {
         /// The minimal value storable by this SafeInt.
@@ -565,8 +563,6 @@ struct SafeIntExplicit(T)
 {
     T value;
     bool nan = true;
-
-    alias value this;
 
     static if (isUnsigned!T)
     {
@@ -654,15 +650,11 @@ nothrow @nogc struct SafeIntImpl(T,Store = SafeIntInline!T) if (isIntegral!T)
     {
         static if (isFloatingPoint!V)
         {
-            if (v >= this.min && v <= this.max)
-            {
-                this.store.unsetNaN();
-                this.store.value = cast(T) v;
-            }
-            else
-            {
-                this.store.setNaN();
-            }
+			static assert(false, "To make the possible lose in precision" ~
+				" visable to the user be convert the floating point" ~
+				" value to an integer before passing it to SafeInt" ~
+				" e.g. SafeInt!int(to!int(13.37))."
+			);
         }
         else
         {
@@ -741,14 +733,22 @@ nothrow @nogc struct SafeIntImpl(T,Store = SafeIntInline!T) if (isIntegral!T)
 
     private static auto getValue(V)(V vIn) pure
     {
+		import std.traits : isIntegral;
+
         static if (isSafeInt!V)
         {
             return vIn.store.value;
         }
-        else
+        else static if (isIntegral!V)
         {
             return vIn;
         }
+		else
+		{
+			static assert(false, "SafeInt only permits operation with other" ~
+				" SafeInt types and integer types. Not " ~ V.stringof
+			);
+		}
     }
 
     /** This implements $(D +=, -=, %=, /=, *=) for this SafeInt.
@@ -909,10 +909,9 @@ nothrow @nogc struct SafeIntImpl(T,Store = SafeIntInline!T) if (isIntegral!T)
     /// Ditto
     Unqual!(typeof(this)) opBinaryRight(string op, V)(V vIn) const pure
     {
-        static if (op == "/" || op == "-")
-            mixin("return Unqual!(typeof(this))(vIn) " ~ op ~ " this;");
-        else
-            mixin("return this " ~ op ~ " vIn;");
+		static assert(false, "SafeInt is not suppost to be used on the right" ~
+			" side of a binary operation"
+		);
     }
 
     /** Implements the assignment operation for the SafeInt type.
@@ -1046,16 +1045,7 @@ nothrow @nogc struct SafeIntImpl(T,Store = SafeIntInline!T) if (isIntegral!T)
         S s03 = -1;
         assert(s03.isNaN);
 
-        S s03_1 = 4 + s03;
-        assert(s03_1.isNaN);
-
-        S s03_2 = 2 / SafeInt!int(2);
-        assert(!s03_2.isNaN);
-        assert(s03_2 == 1);
-
-        s03_2 = 2 - SafeInt!int(2);
-        assert(!s03_2.isNaN);
-        assert(s03_2 == 0);
+        static assert(!__traits(compiles, 4 + s03));
     }
 }
 
@@ -1068,8 +1058,7 @@ unittest
     assert(s.isNaN);
 
     s = int.max;
-    s = 2 * s;
-    assert(s.isNaN);
+    static assert(!__traits(compiles, 2 + s03));
 }
 
 unittest
@@ -1129,6 +1118,21 @@ unittest
         T t = 1;
         assert(t == 1);
     }
+}
+
+unittest
+{
+	import std.stdio : writeln;
+
+	int n = 1_000_000_000;
+	uint m = 3_000_000_000u;
+	writeln(n - m); // Prints "2294967296".
+	n = n - m;
+	writeln(n); // Prints "2294967296".
+	
+	SafeInt!int sn = n;
+	SafeInt!uint sm = m;
+	writeln(sn - sm); // Prints "nan".
 }
 
 @safe:
@@ -1358,20 +1362,12 @@ unittest
             f = f + 1;
             assert(sfEqual(f, s));
 
-            s = 1 + s;
-            f = 1 + f;
-            assert(sfEqual(f, s));
-
             s = s * 2;
             f = f * 2;
             assert(sfEqual(f, s));
 
-            s = 3 * s;
-            f = 3 * f;
-            assert(sfEqual(f, s));
-
-            s = s / 4;
-            f = f / 4;
+            s = s / 2;
+            f = f / 2;
             assert(sfEqual(f, s));
 
             s = s - 4;
@@ -1391,7 +1387,7 @@ unittest
             assert(sfEqual(f, s));
 
             s = s % 2;
-            f = s % 2;
+            f = f % 2;
             assert(sfEqual(f, s));
         }
     }
